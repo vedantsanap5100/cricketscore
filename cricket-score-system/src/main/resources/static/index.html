@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Match centre</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--ink:#16202a;--mute:#66727d;--line:#dfe3e0;--grass:#2c7a4b;--ball:#b3261e;--blue:#1f5fa8}
+@media (prefers-color-scheme:dark){:root{--bg:#10171c;--card:#182229;--ink:#e8edf0;--mute:#93a1ab;--line:#2a3640;--grass:#4fb27a;--ball:#e5675f;--blue:#6aa7ea}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 15px/1.45 Barlow,system-ui,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
+h1,h2,h3,.num{font-family:"Barlow Condensed","Arial Narrow",sans-serif;font-weight:700;margin:0}
+h1{font-size:24px}
+#conn{font-size:13px;color:var(--mute)} #conn.on{color:var(--grass)}
+main{display:grid;grid-template-columns:320px 1fr;gap:20px;padding:20px;max-width:1200px;margin:auto}
+@media(max-width:800px){main{grid-template-columns:1fr}}
+.mc{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;color:inherit;font:inherit;cursor:pointer}
+.mc:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.mc.sel{border-color:var(--grass);box-shadow:inset 3px 0 0 var(--grass)}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.mc .num{font-size:22px}.mute{color:var(--mute);font-size:13px}
+.tag{font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line)}
+.tag.live{color:var(--ball);border-color:var(--ball)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.big{font-size:56px;line-height:1}
+.balls{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.b{min-width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:700 14px "Barlow Condensed",sans-serif;border:1px solid var(--line)}
+.b.W{background:var(--ball);color:#fff;border-color:var(--ball)}
+.b.f{background:var(--blue);color:#fff;border-color:var(--blue)}
+.b.s{background:var(--grass);color:#fff;border-color:var(--grass)}
+.b.Wd{border-style:dashed}
+table{width:100%;border-collapse:collapse;margin:8px 0 14px}
+th,td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left} th{font-weight:500;color:var(--mute);font-size:13px}
+.out{color:var(--mute)} .cm{margin:0;padding:0;list-style:none;max-height:240px;overflow:auto}
+.cm li{padding:5px 0;border-bottom:1px solid var(--line);font-size:14px}
+form{display:grid;gap:8px;margin-top:10px} input{padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
+button.p{padding:8px;border:0;border-radius:6px;background:var(--grass);color:#fff;font:inherit;cursor:pointer}
+.sum{border-left:3px solid var(--grass)}
+</style>
+</head>
+<body>
+<header><h1>Match centre</h1><span id="conn">Connecting</span></header>
+<main>
+  <aside>
+    <div id="list"></div>
+    <details><summary>New match</summary>
+      <form id="nf">
+        <input name="teamA" placeholder="Batting first" required>
+        <input name="teamB" placeholder="Bowling first" required>
+        <input name="overs" type="number" min="1" max="20" value="5" aria-label="Overs per side">
+        <button class="p">Start match</button>
+      </form>
+    </details>
+  </aside>
+  <section id="detail"><p class="mute">Loading matches…</p></section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let matches = {}, sel = null, summaries = {};
+
+const cur = m => m.innings[m.currentInnings];
+const score = i => `${i.runs}/${i.wickets}`;
+
+function chase(m) {
+  if (m.currentInnings !== 1 || m.status !== 'LIVE') return '';
+  const i = cur(m), need = m.target - i.runs, left = m.totalOvers * 6 - i.balls;
+  return `${esc(i.battingTeam)} need ${need} from ${left} balls`;
+}
+
+function renderList() {
+  $('#list').innerHTML = Object.values(matches).map(m => {
+    const i = cur(m);
+    return `<button class="mc ${m.id == sel ? 'sel' : ''}" data-id="${m.id}">
+      <div class="row"><span class="mute">${esc(m.title)}</span>
+      <span class="tag ${m.status === 'LIVE' ? 'live' : ''}">${m.status === 'LIVE' ? 'Live' : 'Final'}</span></div>
+      <div class="row"><span>${esc(i.battingTeam)}</span><span class="num">${score(i)} <span class="mute">(${i.overs})</span></span></div>
+      <div class="mute">${m.status === 'LIVE' ? (chase(m) || 'First innings') : esc(m.result)}</div></button>`;
+  }).join('');
+}
+
+function ballChip(s) {
+  const c = s === 'W' ? 'W' : s === '4' ? 'f' : s === '6' ? 's' : s === 'Wd' ? 'Wd' : '';
+  return `<span class="b ${c}">${s === '0' ? '·' : s}</span>`;
+}
+
+function inningsTable(i) {
+  const bat = i.batters.filter(b => b.status !== 'yet to bat').map(b =>
+    `<tr class="${b.status === 'out' ? 'out' : ''}"><td>${esc(b.name)}${b.name === i.striker && b.status === 'batting' ? ' *' : ''}
+     <span class="mute">${esc(b.dismissal)}</span></td><td>${b.runs}</td><td>${b.balls}</td><td>${b.fours}</td><td>${b.sixes}</td><td>${b.strikeRate.toFixed(1)}</td></tr>`).join('');
+  const bowl = i.bowlers.filter(b => b.balls > 0).map(b =>
+    `<tr><td>${esc(b.name)}</td><td>${b.overs}</td><td>${b.runs}</td><td>${b.wickets}</td><td>${b.economy.toFixed(1)}</td></tr>`).join('');
+  return `<div class="panel"><h3>${esc(i.battingTeam)} ${score(i)} <span class="mute">${i.overs} ov · RR ${i.runRate.toFixed(2)} · extras ${i.extras}</span></h3>
+    <table><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr>${bat}</table>
+    <table><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>Econ</th></tr>${bowl}</table></div>`;
+}
+
+async function loadSummary(id) {
+  summaries[id] = await (await fetch(`/api/matches/${id}/summary`)).json();
+  renderDetail();
+}
+
+function renderDetail() {
+  const m = matches[sel]; if (!m) return;
+  const i = cur(m);
+  if (m.status === 'COMPLETED' && !summaries[m.id]) loadSummary(m.id);
+  const s = summaries[m.id];
+  $('#detail').innerHTML = `
+    <div class="panel">
+      <div class="mute">${esc(m.title)} · ${m.totalOvers} overs a side</div>
+      <div class="row"><span class="num big">${score(i)}</span><span class="num" style="font-size:28px">${i.overs} ov</span></div>
+      <div>${m.status === 'LIVE' ? `${esc(i.striker)} on strike · ${esc(i.bowler)} bowling` : '<b>' + esc(m.result) + '</b>'}</div>
+      ${m.target ? `<div class="mute">Target ${m.target}. ${chase(m)}</div>` : ''}
+      <div class="balls">${m.recent.map(ballChip).join('')}</div>
+    </div>
+    ${s ? `<div class="panel sum"><h3>Match summary</h3><p>${esc(s.result)}</p>
+      <p class="mute">${s.scores.map(esc).join(' · ')}<br>Top batter: ${esc(s.topBatter)}<br>Best bowler: ${esc(s.bestBowler)}</p></div>` : ''}
+    ${[...m.innings].reverse().map(inningsTable).join('')}
+    <div class="panel"><h3>Commentary</h3><ul class="cm">${m.commentary.map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>`;
+}
+
+const render = () => { renderList(); renderDetail(); };
+
+$('#list').addEventListener('click', e => {
+  const b = e.target.closest('.mc'); if (b) { sel = b.dataset.id; render(); }
+});
+
+$('#nf').addEventListener('submit', async e => {
+  e.preventDefault();
+  const r = await fetch('/api/matches?' + new URLSearchParams(new FormData(e.target)), { method: 'POST' });
+  if (!r.ok) return alert('Could not start match: use two different team names and 1–20 overs.');
+  const m = await r.json(); matches[m.id] = m; sel = m.id; e.target.reset(); render();
+});
+
+(async function init() {
+  (await (await fetch('/api/matches')).json()).forEach(m => matches[m.id] = m);
+  sel = Object.keys(matches)[0]; render();
+  const es = new EventSource('/api/stream');
+  es.onopen = () => { $('#conn').textContent = 'Live'; $('#conn').className = 'on'; };
+  es.onerror = () => { $('#conn').textContent = 'Reconnecting…'; $('#conn').className = ''; };
+  es.addEventListener('update', e => { const m = JSON.parse(e.data); matches[m.id] = m; render(); });
+})();
+</script>
+</body>
+</html>
